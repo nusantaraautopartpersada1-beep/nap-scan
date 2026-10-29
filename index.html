@@ -9,13 +9,21 @@
   body{margin:0;font-family:Arial,sans-serif;background:#eef4ff;color:#0b2a5b}
   .kepala{background:#1d4ed8;color:#fff;padding:12px 16px;font-weight:bold;font-size:17px}
   .isi{padding:12px}
-  .layar{position:relative;background:#000;border-radius:14px;overflow:hidden}
-  video{width:100%;display:block;max-height:55vh;object-fit:cover}
+  .baris{display:flex;gap:8px}
+  .baris > div{flex:1}
+  label{display:block;font-size:12px;color:#475569;margin-bottom:4px}
+  input{width:100%;padding:10px;font-size:16px;border:1.5px solid #c7d7f5;border-radius:10px;color:#0b2a5b}
+  .layar{position:relative;background:#000;border-radius:14px;overflow:hidden;margin-top:10px}
+  video{width:100%;display:block;max-height:45vh;object-fit:cover}
   .kilat{position:absolute;inset:0;border:6px solid #22c55e;border-radius:14px;opacity:0;transition:opacity .2s;pointer-events:none}
   .tombol{display:block;width:100%;padding:14px;margin-top:10px;border:0;border-radius:12px;font-size:16px;font-weight:bold}
   .biru{background:#1d4ed8;color:#fff}
+  .hijau{background:#16a34a;color:#fff}
   .putih{background:#fff;color:#1d4ed8;border:2px solid #1d4ed8}
-  #pesan{margin-top:10px;padding:10px;border-radius:10px;background:#dbeafe;color:#1e40af;font-size:14px}
+  #pesan{margin-top:10px;padding:10px;border-radius:10px;font-size:14px}
+  .info{background:#dbeafe;color:#1e40af}
+  .ok{background:#dcfce7;color:#166534}
+  .salah{background:#fee2e2;color:#991b1b}
   .kartu{background:#fff;border-radius:14px;padding:12px;margin-top:10px}
   table{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}
   th,td{text-align:left;padding:6px 4px;border-bottom:1px solid #e2e8f0}
@@ -23,34 +31,57 @@
 </style>
 </head>
 <body>
-<div class="kepala">NAP Scan · Uji Kamera</div>
+<div class="kepala">NAP Scan · Stock Opname</div>
 <div class="isi">
+  <div class="baris">
+    <div><label>Nama petugas</label><input id="petugas" placeholder="Budi" autocomplete="off"></div>
+    <div style="flex:0 0 110px"><label>Lokasi palet</label><input id="lokasi" placeholder="A3" autocomplete="off" autocapitalize="characters"></div>
+  </div>
+
   <div class="layar">
     <video id="video" playsinline muted></video>
     <div class="kilat" id="kilat"></div>
   </div>
   <button class="tombol biru" id="tblMulai" onclick="mulai()">▶ Mulai scan</button>
-  <div id="pesan">Tekan Mulai scan, izinkan kamera, lalu sapu kamera ke label.</div>
+  <div id="pesan" class="info">Isi nama dan lokasi, tekan Mulai scan, lalu sapu kamera ke label.</div>
+
   <div class="kartu">
-    <b>Total label terbaca: <span id="totalLabel">0</span></b>
+    <b>Belum terkirim: <span id="totalLabel">0</span> label</b>
     <table>
       <thead><tr><th>Kode</th><th class="angka">Dus</th><th class="angka">Pcs</th></tr></thead>
       <tbody id="tabel"></tbody>
     </table>
   </div>
-  <button class="tombol putih" onclick="ulang()">Ulang dari nol</button>
+
+  <button class="tombol hijau" id="tblKirim" onclick="kirim()">📤 Kirim ke Sheet</button>
+  <button class="tombol putih" onclick="ulang()">Hapus daftar (tidak dikirim)</button>
 </div>
 
 <script>
-  var detektor = null, berjalan = false, terbaca = {}, rekap = {}, suara = null;
+  const URL_API = 'LINK_NAP_GW';
+
+  var detektor = null, berjalan = false, sedangKirim = false, suara = null;
+  var terbaca = {}, rekap = {};
 
   function el(id) { return document.getElementById(id); }
-  function pesan(t) { el('pesan').textContent = t; }
+  function pesan(t, jenis) { el('pesan').textContent = t; el('pesan').className = jenis || 'info'; }
+  function simpanLokal(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function bacaLokal(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+
+  // Muat data yang tersimpan di HP
+  el('petugas').value = bacaLokal('scan_petugas');
+  el('lokasi').value = bacaLokal('scan_lokasi');
+  try { terbaca = JSON.parse(bacaLokal('scan_belum_kirim') || '{}'); } catch (e) { terbaca = {}; }
+  susunRekap();
+  tampil();
+  if (Object.keys(terbaca).length) pesan('Ada ' + Object.keys(terbaca).length + ' label yang belum terkirim. Tekan Kirim.', 'info');
+
+  el('lokasi').addEventListener('input', function () { this.value = this.value.toUpperCase(); });
 
   async function mulai() {
     if (berjalan) return;
     if (!('BarcodeDetector' in window)) {
-      pesan('Browser ini belum mendukung scan otomatis. Buka di Google Chrome versi terbaru.');
+      pesan('Browser ini belum mendukung scan otomatis. Buka di Google Chrome versi terbaru.', 'salah');
       return;
     }
     try {
@@ -64,10 +95,10 @@
       await el('video').play();
       berjalan = true;
       el('tblMulai').textContent = 'Kamera menyala';
-      pesan('Sapu kamera pelan-pelan ke label. Setiap label baru berbunyi beep.');
+      pesan('Sapu kamera pelan-pelan ke label. Setiap label baru berbunyi beep.', 'info');
       putar();
     } catch (e) {
-      pesan('Kamera tidak bisa dibuka: ' + e.message);
+      pesan('Kamera tidak bisa dibuka: ' + e.message, 'salah');
     }
   }
 
@@ -84,17 +115,26 @@
     teks = String(teks).trim().toUpperCase();
     if (!teks || terbaca[teks]) return;
     terbaca[teks] = true;
-    var b = teks.split('|');
-    var kode = b[0], isi = Number(b[1]) || 0;
-    if (!rekap[kode]) rekap[kode] = { dus: 0, isi: isi };
-    rekap[kode].dus++;
-    if (isi) rekap[kode].isi = isi;
+    simpanLokal('scan_belum_kirim', JSON.stringify(terbaca));
+    susunRekap();
     bunyi();
     if (navigator.vibrate) navigator.vibrate(60);
     el('kilat').style.opacity = 1;
     setTimeout(function () { el('kilat').style.opacity = 0; }, 200);
-    pesan('Terbaca: ' + teks + (b.length < 3 ? ' (label tanpa nomor urut, hanya dihitung sekali)' : ''));
+    var b = teks.split('|');
+    pesan('Terbaca: ' + teks + (b.length < 3 ? ' (label tanpa nomor urut)' : ''), 'info');
     tampil();
+  }
+
+  function susunRekap() {
+    rekap = {};
+    Object.keys(terbaca).forEach(function (t) {
+      var b = t.split('|');
+      var kode = b[0], isi = Number(b[1]) || 0;
+      if (!rekap[kode]) rekap[kode] = { dus: 0, isi: isi };
+      rekap[kode].dus++;
+      if (isi) rekap[kode].isi = isi;
+    });
   }
 
   function tampil() {
@@ -104,7 +144,7 @@
     Object.keys(rekap).sort().forEach(function (k) {
       var r = rekap[k];
       var tr = document.createElement('tr');
-      [k, r.dus, r.isi ? r.dus * r.isi : '-'].forEach(function (v, i) {
+      [k, r.dus, r.isi ? r.dus * r.isi : '?'].forEach(function (v, i) {
         var td = document.createElement('td');
         if (i > 0) td.className = 'angka';
         td.textContent = v;
@@ -114,11 +154,54 @@
     });
   }
 
+  async function kirim() {
+    if (sedangKirim) return;
+    var petugas = el('petugas').value.trim();
+    var lokasi = el('lokasi').value.trim();
+    var daftar = Object.keys(terbaca);
+    if (!petugas) { pesan('Isi nama petugas dulu.', 'salah'); return; }
+    if (!daftar.length) { pesan('Belum ada label yang di-scan.', 'salah'); return; }
+
+    simpanLokal('scan_petugas', petugas);
+    simpanLokal('scan_lokasi', lokasi);
+    sedangKirim = true;
+    el('tblKirim').textContent = 'Mengirim...';
+
+    try {
+      var res = await fetch(URL_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ aksi: 'kirimScan', petugas: petugas, lokasi: lokasi, daftar: daftar }),
+        redirect: 'follow'
+      });
+      var h = await res.json();
+      if (!h.ok) throw new Error(h.pesan || 'Ditolak server');
+
+      var teks = 'Terkirim: ' + (h.ringkas.map(function (r) {
+        return r.kode + ' ' + r.dus + ' dus (' + r.pcs + ' pcs)';
+      }).join(', ') || 'tidak ada data baru');
+      if (h.dobel) teks += '. ' + h.dobel + ' label sudah pernah masuk, dilewati.';
+      if (h.tanpaIsi && h.tanpaIsi.length) teks += '. Isi per dus belum diketahui: ' + h.tanpaIsi.join(', ') + ' (tidak tersimpan).';
+      pesan(teks, 'ok');
+
+      terbaca = {};
+      simpanLokal('scan_belum_kirim', '{}');
+      susunRekap();
+      tampil();
+      if (navigator.vibrate) navigator.vibrate([80, 60, 80]);
+    } catch (e) {
+      pesan('Gagal kirim: ' + e.message + '. Data masih aman di HP, coba Kirim lagi.', 'salah');
+    }
+    sedangKirim = false;
+    el('tblKirim').textContent = '📤 Kirim ke Sheet';
+  }
+
   function ulang() {
     terbaca = {};
-    rekap = {};
+    simpanLokal('scan_belum_kirim', '{}');
+    susunRekap();
     tampil();
-    pesan('Hitungan dikosongkan.');
+    pesan('Daftar dikosongkan (tidak dikirim).', 'info');
   }
 
   function bunyi() {
