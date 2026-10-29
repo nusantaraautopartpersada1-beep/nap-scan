@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NAP Scan</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Arial,sans-serif;background:#eef4ff;color:#0b2a5b}
+  .kepala{background:#1d4ed8;color:#fff;padding:12px 16px;font-weight:bold;font-size:17px}
+  .isi{padding:12px}
+  .layar{position:relative;background:#000;border-radius:14px;overflow:hidden}
+  video{width:100%;display:block;max-height:55vh;object-fit:cover}
+  .kilat{position:absolute;inset:0;border:6px solid #22c55e;border-radius:14px;opacity:0;transition:opacity .2s;pointer-events:none}
+  .tombol{display:block;width:100%;padding:14px;margin-top:10px;border:0;border-radius:12px;font-size:16px;font-weight:bold}
+  .biru{background:#1d4ed8;color:#fff}
+  .putih{background:#fff;color:#1d4ed8;border:2px solid #1d4ed8}
+  #pesan{margin-top:10px;padding:10px;border-radius:10px;background:#dbeafe;color:#1e40af;font-size:14px}
+  .kartu{background:#fff;border-radius:14px;padding:12px;margin-top:10px}
+  table{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}
+  th,td{text-align:left;padding:6px 4px;border-bottom:1px solid #e2e8f0}
+  .angka{text-align:right}
+</style>
+</head>
+<body>
+<div class="kepala">NAP Scan · Uji Kamera</div>
+<div class="isi">
+  <div class="layar">
+    <video id="video" playsinline muted></video>
+    <div class="kilat" id="kilat"></div>
+  </div>
+  <button class="tombol biru" id="tblMulai" onclick="mulai()">▶ Mulai scan</button>
+  <div id="pesan">Tekan Mulai scan, izinkan kamera, lalu sapu kamera ke label.</div>
+  <div class="kartu">
+    <b>Total label terbaca: <span id="totalLabel">0</span></b>
+    <table>
+      <thead><tr><th>Kode</th><th class="angka">Dus</th><th class="angka">Pcs</th></tr></thead>
+      <tbody id="tabel"></tbody>
+    </table>
+  </div>
+  <button class="tombol putih" onclick="ulang()">Ulang dari nol</button>
+</div>
+
+<script>
+  var detektor = null, berjalan = false, terbaca = {}, rekap = {}, suara = null;
+
+  function el(id) { return document.getElementById(id); }
+  function pesan(t) { el('pesan').textContent = t; }
+
+  async function mulai() {
+    if (berjalan) return;
+    if (!('BarcodeDetector' in window)) {
+      pesan('Browser ini belum mendukung scan otomatis. Buka di Google Chrome versi terbaru.');
+      return;
+    }
+    try {
+      suara = new (window.AudioContext || window.webkitAudioContext)();
+      detektor = new BarcodeDetector({ formats: ['qr_code'] });
+      var stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
+      });
+      el('video').srcObject = stream;
+      await el('video').play();
+      berjalan = true;
+      el('tblMulai').textContent = 'Kamera menyala';
+      pesan('Sapu kamera pelan-pelan ke label. Setiap label baru berbunyi beep.');
+      putar();
+    } catch (e) {
+      pesan('Kamera tidak bisa dibuka: ' + e.message);
+    }
+  }
+
+  async function putar() {
+    if (!berjalan) return;
+    try {
+      var hasil = await detektor.detect(el('video'));
+      hasil.forEach(function (h) { catat(h.rawValue); });
+    } catch (e) {}
+    setTimeout(putar, 150);
+  }
+
+  function catat(teks) {
+    teks = String(teks).trim().toUpperCase();
+    if (!teks || terbaca[teks]) return;
+    terbaca[teks] = true;
+    var b = teks.split('|');
+    var kode = b[0], isi = Number(b[1]) || 0;
+    if (!rekap[kode]) rekap[kode] = { dus: 0, isi: isi };
+    rekap[kode].dus++;
+    if (isi) rekap[kode].isi = isi;
+    bunyi();
+    if (navigator.vibrate) navigator.vibrate(60);
+    el('kilat').style.opacity = 1;
+    setTimeout(function () { el('kilat').style.opacity = 0; }, 200);
+    pesan('Terbaca: ' + teks + (b.length < 3 ? ' (label tanpa nomor urut, hanya dihitung sekali)' : ''));
+    tampil();
+  }
+
+  function tampil() {
+    el('totalLabel').textContent = Object.keys(terbaca).length;
+    var tb = el('tabel');
+    tb.textContent = '';
+    Object.keys(rekap).sort().forEach(function (k) {
+      var r = rekap[k];
+      var tr = document.createElement('tr');
+      [k, r.dus, r.isi ? r.dus * r.isi : '-'].forEach(function (v, i) {
+        var td = document.createElement('td');
+        if (i > 0) td.className = 'angka';
+        td.textContent = v;
+        tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    });
+  }
+
+  function ulang() {
+    terbaca = {};
+    rekap = {};
+    tampil();
+    pesan('Hitungan dikosongkan.');
+  }
+
+  function bunyi() {
+    try {
+      var o = suara.createOscillator(), g = suara.createGain();
+      o.frequency.value = 1400;
+      g.gain.value = 0.15;
+      o.connect(g);
+      g.connect(suara.destination);
+      o.start();
+      o.stop(suara.currentTime + 0.08);
+    } catch (e) {}
+  }
+</script>
+</body>
+</html>
