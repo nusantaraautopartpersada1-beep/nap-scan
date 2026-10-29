@@ -7,10 +7,10 @@
 <style>
   *{box-sizing:border-box}
   body{margin:0;font-family:Arial,sans-serif;background:#eef4ff;color:#0b2a5b}
-  .kepala{background:#1d4ed8;color:#fff;padding:12px 16px;font-weight:bold;font-size:17px}
+  .kepala{background:#1d4ed8;color:#fff;padding:12px 16px;font-weight:bold;font-size:17px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .kepala button{background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:8px;padding:5px 10px;font-size:13px}
+  #namaUser{font-size:13px;font-weight:normal}
   .isi{padding:12px}
-  .baris{display:flex;gap:8px}
-  .baris > div{flex:1}
   label{display:block;font-size:12px;color:#475569;margin-bottom:4px}
   input{width:100%;padding:10px;font-size:16px;border:1.5px solid #c7d7f5;border-radius:10px;color:#0b2a5b}
   .layar{position:relative;background:#000;border-radius:14px;overflow:hidden;margin-top:10px}
@@ -28,22 +28,42 @@
   table{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}
   th,td{text-align:left;padding:6px 4px;border-bottom:1px solid #e2e8f0}
   .angka{text-align:right}
+  #layarLogin{position:fixed;inset:0;background:#1d4ed8;display:flex;align-items:center;justify-content:center;padding:16px;z-index:10}
+  .kotakLogin{background:#fff;border-radius:18px;padding:24px 20px;width:100%;max-width:360px}
+  .kotakLogin h2{margin:0 0 4px;font-size:20px}
+  .kotakLogin p{margin:0 0 16px;color:#64748b;font-size:13px}
+  .kotakLogin input{margin-bottom:10px}
+  #pesanLogin{color:#b91c1c;font-size:13px;min-height:18px;margin-top:8px}
 </style>
 </head>
 <body>
-<div class="kepala">NAP Scan · Stock Opname</div>
-<div class="isi">
-  <div class="baris">
-    <div><label>Nama petugas</label><input id="petugas" placeholder="Budi" autocomplete="off"></div>
-    <div style="flex:0 0 110px"><label>Lokasi palet</label><input id="lokasi" placeholder="A3" autocomplete="off" autocapitalize="characters"></div>
+
+<div id="layarLogin">
+  <div class="kotakLogin">
+    <h2>📦 NAP Scan</h2>
+    <p>Masuk pakai akun NAP GW</p>
+    <input id="inUser" placeholder="Username" autocomplete="username" autocapitalize="none">
+    <input id="inPass" type="password" placeholder="Password" autocomplete="current-password"
+           onkeydown="if(event.key==='Enter') masuk()">
+    <button class="tombol biru" id="tblMasuk" onclick="masuk()">Masuk</button>
+    <div id="pesanLogin"></div>
   </div>
+</div>
+
+<div class="kepala">
+  <span>NAP Scan · Opname</span>
+  <span><span id="namaUser"></span> <button onclick="keluar()">Keluar</button></span>
+</div>
+<div class="isi">
+  <label>Lokasi palet</label>
+  <input id="lokasi" placeholder="A3" autocomplete="off" autocapitalize="characters">
 
   <div class="layar">
     <video id="video" playsinline muted></video>
     <div class="kilat" id="kilat"></div>
   </div>
   <button class="tombol biru" id="tblMulai" onclick="mulai()">▶ Mulai scan</button>
-  <div id="pesan" class="info">Isi nama dan lokasi, tekan Mulai scan, lalu sapu kamera ke label.</div>
+  <div id="pesan" class="info">Isi lokasi palet, tekan Mulai scan, lalu sapu kamera ke label.</div>
 
   <div class="kartu">
     <b>Belum terkirim: <span id="totalLabel">0</span> label</b>
@@ -60,7 +80,7 @@
 <script>
   const URL_API = 'https://script.google.com/macros/s/AKfycbz9y_V7WyYkqJ-GX7RMenklHr4UJve_h-nnOJdU3CHJQPPm4bJrODTnRIsAKOFH2bwt1g/exec';
 
-  var detektor = null, berjalan = false, sedangKirim = false, suara = null;
+  var TOKEN = '', detektor = null, berjalan = false, sedangKirim = false, suara = null;
   var terbaca = {}, rekap = {};
 
   function el(id) { return document.getElementById(id); }
@@ -68,16 +88,73 @@
   function simpanLokal(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   function bacaLokal(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
 
-  // Muat data yang tersimpan di HP
-  el('petugas').value = bacaLokal('scan_petugas');
+  async function api(isi) {
+    var res = await fetch(URL_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(isi),
+      redirect: 'follow'
+    });
+    return res.json();
+  }
+
+  // ===== LOGIN =====
+  function tampilLogin(teks) {
+    el('layarLogin').style.display = 'flex';
+    el('pesanLogin').textContent = teks || '';
+  }
+
+  function setelahMasuk(nama) {
+    el('layarLogin').style.display = 'none';
+    el('namaUser').textContent = '👤 ' + nama;
+  }
+
+  async function masuk() {
+    var u = el('inUser').value.trim(), p = el('inPass').value;
+    if (!u || !p) { el('pesanLogin').textContent = 'Isi username dan password.'; return; }
+    el('tblMasuk').textContent = 'Memeriksa...';
+    try {
+      var h = await api({ aksi: 'login', username: u, password: p });
+      if (!h.ok) throw new Error(h.pesan || 'Login gagal');
+      TOKEN = h.token;
+      simpanLokal('scan_token', TOKEN);
+      simpanLokal('scan_nama', h.nama || u);
+      el('inPass').value = '';
+      setelahMasuk(h.nama || u);
+    } catch (e) {
+      el('pesanLogin').textContent = e.message;
+    }
+    el('tblMasuk').textContent = 'Masuk';
+  }
+
+  function keluar() {
+    TOKEN = '';
+    simpanLokal('scan_token', '');
+    simpanLokal('scan_nama', '');
+    tampilLogin('');
+  }
+
+  (async function cekAwal() {
+    var t = bacaLokal('scan_token');
+    if (!t) { tampilLogin(''); return; }
+    try {
+      var h = await api({ aksi: 'cekSesi', token: t });
+      if (h.ok) { TOKEN = t; setelahMasuk(h.nama); }
+      else tampilLogin('Sesi sudah habis, silakan masuk lagi.');
+    } catch (e) {
+      tampilLogin('Tidak bisa terhubung. Periksa internet, lalu masuk lagi.');
+    }
+  })();
+
+  // ===== DATA TERSIMPAN DI HP =====
   el('lokasi').value = bacaLokal('scan_lokasi');
   try { terbaca = JSON.parse(bacaLokal('scan_belum_kirim') || '{}'); } catch (e) { terbaca = {}; }
   susunRekap();
   tampil();
   if (Object.keys(terbaca).length) pesan('Ada ' + Object.keys(terbaca).length + ' label yang belum terkirim. Tekan Kirim.', 'info');
-
   el('lokasi').addEventListener('input', function () { this.value = this.value.toUpperCase(); });
 
+  // ===== KAMERA =====
   async function mulai() {
     if (berjalan) return;
     if (!('BarcodeDetector' in window)) {
@@ -154,29 +231,26 @@
     });
   }
 
+  // ===== KIRIM =====
   async function kirim() {
     if (sedangKirim) return;
-    var petugas = el('petugas').value.trim();
+    if (!TOKEN) { tampilLogin('Silakan masuk dulu.'); return; }
     var lokasi = el('lokasi').value.trim();
     var daftar = Object.keys(terbaca);
-    if (!petugas) { pesan('Isi nama petugas dulu.', 'salah'); return; }
     if (!daftar.length) { pesan('Belum ada label yang di-scan.', 'salah'); return; }
 
-    simpanLokal('scan_petugas', petugas);
     simpanLokal('scan_lokasi', lokasi);
     sedangKirim = true;
     el('tblKirim').textContent = 'Mengirim...';
-
     try {
-      var res = await fetch(URL_API, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ aksi: 'kirimScan', petugas: petugas, lokasi: lokasi, daftar: daftar }),
-        redirect: 'follow'
-      });
-      var h = await res.json();
-      if (!h.ok) throw new Error(h.pesan || 'Ditolak server');
-
+      var h = await api({ aksi: 'kirimScan', token: TOKEN, lokasi: lokasi, daftar: daftar });
+      if (!h.ok) {
+        if (String(h.pesan).indexOf('SESI_HABIS') > -1) {
+          tampilLogin('Sesi sudah habis. Masuk lagi, lalu tekan Kirim. Hasil scan masih aman.');
+          throw new Error('Sesi habis');
+        }
+        throw new Error(h.pesan || 'Ditolak server');
+      }
       var teks = 'Terkirim: ' + (h.ringkas.map(function (r) {
         return r.kode + ' ' + r.dus + ' dus (' + r.pcs + ' pcs)';
       }).join(', ') || 'tidak ada data baru');
