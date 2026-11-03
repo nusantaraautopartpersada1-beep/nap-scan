@@ -51,7 +51,7 @@
 </div>
 
 <div class="kepala">
-  <span>NAP Scan · Opname</span>
+  <span><button onclick="kePortal()">← Portal</button> NAP Scan · Opname</span>
   <span><span id="namaUser"></span> <button onclick="keluar()">Keluar</button></span>
 </div>
 <div class="isi">
@@ -84,6 +84,17 @@
   var terbaca = {}, rekap = {};
 
   function el(id) { return document.getElementById(id); }
+
+  // Alamat yang dibuka APK saat pertama kali dinyalakan (OA.NAP / Portal NAP)
+  const URL_PORTAL = 'TEMPEL_ALAMAT_PORTAL_DI_SINI';
+
+  function kePortal() {
+    berjalan = false;
+    var v = el('video');
+    if (v && v.srcObject) { v.srcObject.getTracks().forEach(function (t) { t.stop(); }); }
+    if (history.length > 1) history.back();
+    else location.href = URL_PORTAL;
+  }
   function pesan(t, jenis) { el('pesan').textContent = t; el('pesan').className = jenis || 'info'; }
   function simpanLokal(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   function bacaLokal(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
